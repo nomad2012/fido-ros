@@ -4,7 +4,7 @@ project(fido)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS cv_bridge rospy sensor_msgs std_msgs)
+find_package(catkin REQUIRED COMPONENTS cv_bridge rospy sensor_msgs std_msgs message_generation)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -20,11 +20,11 @@ find_package(catkin REQUIRED COMPONENTS cv_bridge rospy sensor_msgs std_msgs)
 #######################################
 
 ## Generate messages in the 'msg' folder
-# add_message_files(
-#   FILES
-#   Message1.msg
-#   Message2.msg
-# )
+add_message_files(
+   FILES
+   MotorCommand.msg
+   MotorStatus.msg
+ )
 
 ## Generate services in the 'srv' folder
 # add_service_files(
@@ -34,10 +34,10 @@ find_package(catkin REQUIRED COMPONENTS cv_bridge rospy sensor_msgs std_msgs)
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   sensor_msgs#   std_msgs
-# )
+generate_messages(
+   DEPENDENCIES
+   sensor_msgs   std_msgs
+ )
 
 ###################################
 ## catkin specific configuration ##
@@ -50,7 +50,7 @@ find_package(catkin REQUIRED COMPONENTS cv_bridge rospy sensor_msgs std_msgs)
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES fido
-#  CATKIN_DEPENDS cv_bridge OpenCV rospy sensor_msgs std_msgs
+  CATKIN_DEPENDS cv_bridge OpenCV rospy sensor_msgs std_msgs message_runtime
 #  DEPENDS system_lib
 )
 
@@ -89,10 +89,9 @@ catkin_package(
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
 install(PROGRAMS
-   src/balldetect.py
-   src/balltrack.py
-   src/balltrack2.py
-   src/fido.py
+   src/fido-opencv2-ball-tracker.py
+   src/servo_if.py
+   src/motor_if.py
    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
  )
 

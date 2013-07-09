@@ -1,0 +1,11 @@
+Header header
+float64 sonar_l
+float64 sonar_r
+float64 encoder_l
+float64 encoder_r
+float64 speed_cmd_l
+float64 speed_cmd_r
+float64 speed_act_l
+float64 speed_act_r
+float64 out_l
+float64 out_r
