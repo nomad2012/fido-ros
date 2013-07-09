@@ -89,7 +89,9 @@ catkin_package(
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
 install(PROGRAMS
+   src/balldetect.py
    src/balltrack.py
+   src/balltrack2.py
    src/fido.py
    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
  )

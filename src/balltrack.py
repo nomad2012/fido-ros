@@ -29,8 +29,11 @@ def GetThresholdedImage(img):
 posX = 0
 posY = 0
 
-MAX_X = 640.0
-MAX_Y = 480.0
+MAX_X = 320.0
+MAX_Y = 240.0
+
+Px = 8
+Py = 16
 
 CENTER_X = MAX_X / 2.0
 CENTER_Y = MAX_Y / 2.0
@@ -77,6 +80,9 @@ def image_callback(data):
   lastX = posX
   lastY = posY
 
+  cv.ShowImage("orig_image", frame)
+  cv.ShowImage("thresholded_image", imgThresh)
+  
   if area > 20000: 
 			
     # Calculate the coordinate postition of the centroid
@@ -84,33 +90,32 @@ def image_callback(data):
     posY = int(moment01 / area)
 
     print str(datetime.datetime.now()), " frame: ", frame_number, ' x: ' + str(posX) + ' y: ' + str(posY) + ' area: ' + str(area) + ' head_x: ' + str(head_x) + ' neck_y: ' + str(neck_y) + ' jaw_pos: ' + str(jaw_pos)
-    cv.ShowImage("orig_image", frame)
 
     # track the movement of the blob
     if(lastX > 0 and lastY > 0 and posX > 0 and posY > 0):
       if posX < CENTER_X - 10:
         error_x = (posX - CENTER_X) / MAX_X * (HEAD_RIGHT - HEAD_LEFT)
-        desired_x = int(error_x) / 4 + head_x
+        desired_x = int(error_x) / Px + head_x
         head_x = desired_x
         if head_x < HEAD_LEFT:
           head_x = HEAD_LEFT
         fido.set_servo(fido.HEAD, head_x)
       elif posX > CENTER_X + 10:
         new_x = (posX - CENTER_X) / MAX_X * (HEAD_RIGHT - HEAD_LEFT)
-        head_x = int(new_x) / 4 + head_x
+        head_x = int(new_x) / Px + head_x
         if head_x > HEAD_RIGHT:
           head_x = HEAD_RIGHT
         fido.set_servo(fido.HEAD, head_x)
 
       if posY < CENTER_Y - 10:
         new_y = (posY - CENTER_Y) / MAX_Y * (NECK_UP - NECK_DOWN)
-        neck_y = neck_y - (int(new_y) / 8)
+        neck_y = neck_y - (int(new_y) / Py)
         if neck_y > NECK_UP:
           neck_y = NECK_UP
         fido.set_servo(fido.NECK, neck_y)
       elif posY > CENTER_Y + 10:
         new_y = (posY - CENTER_Y) / MAX_Y * (NECK_UP - NECK_DOWN)
-        neck_y = neck_y - (int(new_y) / 8)
+        neck_y = neck_y - (int(new_y) / Py)
         if neck_y < NECK_DOWN:
           neck_y = NECK_DOWN
         fido.set_servo(fido.NECK, neck_y)
@@ -137,8 +142,8 @@ def main():
   print "balltrack opening window"
   cv.NamedWindow("orig_image", 1)
   cv.MoveWindow("orig_image", 0, 0)
-  cv.NamedWindow("thresholded", 1)
-  cv.MoveWindow("thresholded", 700, 0)
+  cv.NamedWindow("thresholded_image", 1)
+  cv.MoveWindow("thresholded_image", 700, 0)
 
   print "balltrack init_node"
   rospy.init_node('balltrack', anonymous=True)
