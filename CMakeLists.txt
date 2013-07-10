@@ -92,6 +92,9 @@ install(PROGRAMS
    src/fido-opencv2-ball-tracker.py
    src/servo_if.py
    src/motor_if.py
+   src/pid.py
+   src/video.py
+   src/common.py
    DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
  )
 

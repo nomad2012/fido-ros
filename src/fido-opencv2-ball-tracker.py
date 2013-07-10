@@ -6,7 +6,7 @@
 import roslib
 roslib.load_manifest('fido')
 import rospy
-from nomad1.msg import MotorCommand
+from fido.msg import MotorCommand
 
 import cv2
 from video import create_capture
@@ -52,6 +52,7 @@ def set_motor_speed(speed_cmd_l, speed_cmd_r):
 def init_publisher():
     """initialize ROS publisher(s)"""
     global pub
+    rospy.init_node('fido', anonymous=True)
     pub = rospy.Publisher('motor_command', MotorCommand)
 
 
@@ -73,11 +74,18 @@ def main():
     #cv2.moveWindow(blob_window, 700, 500)
 
     # PIDs for head, neck, and base movement.
-    # PID outputs are relative to center of view, so if the ball is centered, output = 0.
-    head_x_pid = pid.PID(kP=0.25, kI=0.0, kD=0.0, output_min=-HEAD_CENTER, output_max=HEAD_CENTER)
-    neck_y_pid = pid.PID(kP=0.125, kI=0.0, kD=0.0, output_min=-NECK_CENTER, output_max=NECK_CENTER)
-    # for the base, output = rotational velocity (applied negatively to left wheel, positively to right)
-    base_x_pid = pid.PID(kP=0.1, kI=0.0, kD=0.0, output_min=-100, output_max=100)
+    # head & neck PID outputs are relative to center of view, so if the ball is centered, output = 0.
+    head_x_pid = pid.PID(kP=0.02, kI=0.0005, kD=0.0, output_min=-HEAD_CENTER, output_max=HEAD_CENTER)
+    head_x_pid.set_setpoint(CENTER_X)
+    neck_y_pid = pid.PID(kP=0.02, kI=0.0005, kD=0.0, output_min=-NECK_CENTER, output_max=NECK_CENTER)
+    neck_y_pid.set_setpoint(CENTER_Y)
+    # base tracks the head and tries to move so that the head will be centered
+    # output = rotational velocity (applied negatively to left wheel, positively to right)
+    base_r_pid = pid.PID(kP=2.0, kI=0.05, kD=0.0, output_min=-255, output_max=255)
+    base_r_pid.set_setpoint(HEAD_CENTER)
+
+    base_area_pid = pid.PID(kP=0.02, kI=0.005, kD=0.0, output_min=-255, output_max=255)
+    base_area_pid.set_setpoint(5500)
 
     servo_if.init_servos()
     time.sleep(0.25)
@@ -85,6 +93,9 @@ def main():
     head_x = servo_if.get_servo_position(servo_if.HEAD)
     neck_y = servo_if.get_servo_position(servo_if.NECK)
     jaw_pos = servo_if.get_servo_position(servo_if.JAW)
+    head_x_output = 0
+    neck_y_output = 0
+    base_x_output = 0
     
     last_known_x = None
     last_known_y = None
@@ -131,49 +142,43 @@ def main():
         elif last_known_x is not None:
             if head_x > HEAD_LEFT and head_x < HEAD_RIGHT and neck_y > NECK_DOWN and neck_y < NECK_UP:
                 pos_x = last_known_x
-                pos_y = last_known_y
+                pos_y = CENTER_Y
             else:
-                servo_if.ramp_servo(servo_if.HEAD, HEAD_CENTER, -3 if head_x > HEAD_CENTER else 3)
-                servo_if.ramp_servo(servo_if.NECK, NECK_START, -3 if neck_y > NECK_CENTER else 3)
+                #servo_if.ramp_servo(servo_if.HEAD, HEAD_CENTER, -3 if head_x > HEAD_CENTER else 3)
+                #servo_if.ramp_servo(servo_if.NECK, NECK_START, -3 if neck_y > NECK_CENTER else 3)
                 pos_x = CENTER_X
                 pos_y = CENTER_Y
                 last_known_x = None
                 last_known_y = None
 
-        print str(datetime.now()), ' x: ' + str(pos_x) + ' y: ' + str(pos_y) + ' area: ' + str(area) + ' head_x: ' + str(head_x) + ' neck_y: ' + str(neck_y) + ' jaw_pos: ' + str(jaw_pos)
-        #drawing lines to track the movement of the blob
-        if(lastX > 0 and lastY > 0 and pos_x > 0 and pos_y > 0):
-            #cv.Circle( thresholded_image, (pos_x, pos_y), maxRadius, cv.Scalar(0,0,255), 3, 8, 0 );        
-            #cv.Line(imgScrible, (pos_x, pos_y), (lastX, lastY), cv.Scalar(0, 0, 255), 5)
-            if pos_x < CENTER_X - 10:
-                error_x = (pos_x - CENTER_X) / MAX_X * (HEAD_RIGHT - HEAD_LEFT)
-                desired_x = int(error_x) / 4 + head_x
-                head_x = max(desired_x, HEAD_LEFT)
-                servo_if.set_servo(servo_if.HEAD, head_x)
-            elif pos_x > CENTER_X + 10:
-                new_x = (pos_x - CENTER_X) / MAX_X * (HEAD_RIGHT - HEAD_LEFT)
-                head_x = min(int(new_x) / 4 + head_x, HEAD_RIGHT)
-                servo_if.set_servo(servo_if.HEAD, head_x)
 
-            if pos_y < CENTER_Y - 10:
-                new_y = (pos_y - CENTER_Y) / MAX_Y * (NECK_UP - NECK_DOWN)
-                neck_y = min(neck_y - (int(new_y) / 8), NECK_UP)
-                servo_if.set_servo(servo_if.NECK, neck_y)
-            elif pos_y > CENTER_Y + 10:
-                new_y = (pos_y - CENTER_Y) / MAX_Y * (NECK_UP - NECK_DOWN)
-                neck_y = max(neck_y - (int(new_y) / 8), NECK_DOWN)
-                servo_if.set_servo(servo_if.NECK, neck_y)
-
-            jaw_pos =int((float(area) - 1000.0) / 25000.0 * (servo_if.JAW_OPEN - servo_if.JAW_CLOSED_EMPTY) + servo_if.JAW_CLOSED_EMPTY)
+        if area > -1:
+            head_x_output = head_x_pid.update(pos_x)
+            head_x = min(max(head_x + head_x_output, HEAD_LEFT), HEAD_RIGHT)
+            servo_if.set_servo(servo_if.HEAD, int(head_x))
+        
+            neck_y_output = neck_y_pid.update(pos_y)
+            neck_y = min(max(neck_y - neck_y_output, NECK_DOWN), NECK_UP)             # for screen coordinates, +y = down, but for neck coordinates, +y = up
+            servo_if.set_servo(servo_if.NECK, int(neck_y))
+        
+            base_x_output = base_r_pid.update(head_x)
+            base_area_output = base_area_pid.update(area) if area > 50 else 0
+            left_motor_speed = min(max(base_x_output - base_area_output, -255), 255)
+            right_motor_speed = min(max(base_x_output + base_area_output, -255), 255)
+            set_motor_speed(int(left_motor_speed), int(right_motor_speed))  # for +output, left motor goes forward, right motor goes backward
+        
+            jaw_pos = int((float(area) - 1000.0) / 20000.0 * (servo_if.JAW_OPEN - servo_if.JAW_CLOSED_EMPTY) + servo_if.JAW_CLOSED_EMPTY)
             jaw_pos = max(min(jaw_pos, servo_if.JAW_OPEN), servo_if.JAW_CLOSED_EMPTY)
             servo_if.set_servo(servo_if.JAW, jaw_pos)
 
-        #cv2.imshow(blob_window, thresholded_image)
         end_time = time.time()
-        print "elapsed time = {}".format(end_time - start_time)
+        if not frame_number % 10:
+            print '{}. {} x: {} y: {} area: {} head: {} {} neck: {} {} base: {} {} jaw_pos: {} elapsed: {}'.format(frame_number, datetime.now(), pos_x, pos_y, area, head_x, head_x_output, neck_y, neck_y_output, base_x_output, base_area_output, jaw_pos, end_time - start_time)
+        #cv2.imshow(blob_window, thresholded_image)
+        time.sleep(0.001)
         #c = cv2.waitKey(3)
         #if(c!=-1):
-        #  break
+        #    break
     print "exiting"
     #cv2.destroyAllWindows()
 

@@ -4,19 +4,17 @@ import serial
 import time
 
 # Servo numbers
-LEFT_WHEELS = 1
-RIGHT_WHEELS = 2
-LEFT_LEG = 3    # left and right legs must move synchronized, in opposite directions!
-RIGHT_LEG = 4
-NECK = 5
-HEAD = 6
-JAW = 7
-TAIL = 8
+LEFT_LEG = 1    # left and right legs must move synchronized, in opposite directions!
+RIGHT_LEG = 2
+NECK = 3
+HEAD = 4
+JAW = 5
+TAIL = 6
 
 # Servo positions
-LEGS_DOWN = 20 # -15  # relative to leg center - use only with set_legs()
-LEGS_UP = 73     # relative to leg center - use only with set_legs()
-NECK_DOWN = 84
+LEGS_DOWN = -10 # -15  # relative to leg center - use only with set_legs()
+LEGS_UP = 65     # relative to leg center - use only with set_legs()
+NECK_DOWN = 90
 NECK_UP = 170
 HEAD_LEFT = 0x6A-0x25
 HEAD_CENTER = 0x6A
@@ -28,7 +26,7 @@ TAIL_LEFT = 136-50
 TAIL_CENTER = 136
 TAIL_RIGHT = 136+50
 
-port = serial.Serial("/dev/ttyUSB0", 19200, timeout=0.1)
+port = serial.Serial("/dev/ttyUSB4", 19200, timeout=0.1)
 legs_position = 0
 
 def get_legs_position():
@@ -165,6 +163,17 @@ def grab_ball():
     raise_head()
     set_servo(JAW,0) # relax jaw to prevent servo overheating
     wag_tail()
+
+def throw_ball():
+    set_servo(HEAD, HEAD_CENTER)
+    set_servo(JAW, JAW_CLOSED_FULL)
+    lower_head()
+    ramp_legs(LEGS_DOWN+10, -3, 0.02)
+    time.sleep(0.2)
+    set_legs(LEGS_UP)
+    set_servo(NECK, NECK_UP)
+    time.sleep(0.05)
+    set_servo(JAW, JAW_OPEN)
 
 def test_servos(iterations=20):
     init_servos()

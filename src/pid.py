@@ -38,13 +38,13 @@ class PID(object):
         """
         Calculate PID output value for given reference input and feedback
         """
-        self.error = self.setpoint - current_value
+        self.error = current_value - self.setpoint
         self.P_value = self.kP * self.error
         self.D_value = self.kD * ( self.error - self.derivator)
         self.derivator = self.error
-        self.integrator = min(max(self.integrator + self.error, integrator_min), integrator_max)
+        self.integrator = min(max(self.integrator + self.error, self.integrator_min), self.integrator_max)
         self.I_value = self.integrator * self.kI
-        output = min(max(self.P_value + self.I_value + self.D_value, output_min), output_max)
+        output = min(max(self.P_value + self.I_value + self.D_value, self.output_min), self.output_max)
         return output
 
     def set_setpoint(self, setpoint):
