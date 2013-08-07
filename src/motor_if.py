@@ -2,9 +2,9 @@
 """motor_if.py - read serial data from Arduino motor controller and publish encoder counts, speeds, and motor command feedback
 """
 
-import roslib; roslib.load_manifest('nomad1')
+import roslib; roslib.load_manifest('fido')
 import rospy
-from nomad1.msg import MotorStatus, MotorCommand
+from fido.msg import MotorStatus, MotorCommand
 import serial
 import string
 import sys

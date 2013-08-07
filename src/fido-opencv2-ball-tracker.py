@@ -75,16 +75,16 @@ def main():
 
     # PIDs for head, neck, and base movement.
     # head & neck PID outputs are relative to center of view, so if the ball is centered, output = 0.
-    head_x_pid = pid.PID(kP=0.02, kI=0.0005, kD=0.0, output_min=-HEAD_CENTER, output_max=HEAD_CENTER)
+    head_x_pid = pid.PID(kP=0.020, kI=0.00075, kD=0.0, output_min=-HEAD_CENTER, output_max=HEAD_CENTER)
     head_x_pid.set_setpoint(CENTER_X)
-    neck_y_pid = pid.PID(kP=0.02, kI=0.0005, kD=0.0, output_min=-NECK_CENTER, output_max=NECK_CENTER)
+    neck_y_pid = pid.PID(kP=0.020, kI=0.00075, kD=0.0, output_min=-NECK_CENTER, output_max=NECK_CENTER)
     neck_y_pid.set_setpoint(CENTER_Y)
     # base tracks the head and tries to move so that the head will be centered
     # output = rotational velocity (applied negatively to left wheel, positively to right)
-    base_r_pid = pid.PID(kP=2.0, kI=0.05, kD=0.0, output_min=-255, output_max=255)
+    base_r_pid = pid.PID(kP=1.5, kI=0.05, kD=0.0, output_min=-250, output_max=250)
     base_r_pid.set_setpoint(HEAD_CENTER)
 
-    base_area_pid = pid.PID(kP=0.02, kI=0.005, kD=0.0, output_min=-255, output_max=255)
+    base_area_pid = pid.PID(kP=0.02, kI=0.002, kD=0.0, output_min=-250, output_max=250)
     base_area_pid.set_setpoint(5500)
 
     servo_if.init_servos()
@@ -162,9 +162,10 @@ def main():
             servo_if.set_servo(servo_if.NECK, int(neck_y))
         
             base_x_output = base_r_pid.update(head_x)
+            #base_x_output = 0
             base_area_output = base_area_pid.update(area) if area > 50 else 0
-            left_motor_speed = min(max(base_x_output - base_area_output, -255), 255)
-            right_motor_speed = min(max(base_x_output + base_area_output, -255), 255)
+            left_motor_speed = min(max(base_x_output - base_area_output, -250), 250)
+            right_motor_speed = min(max(-base_x_output - base_area_output, -250), 250)
             set_motor_speed(int(left_motor_speed), int(right_motor_speed))  # for +output, left motor goes forward, right motor goes backward
         
             jaw_pos = int((float(area) - 1000.0) / 20000.0 * (servo_if.JAW_OPEN - servo_if.JAW_CLOSED_EMPTY) + servo_if.JAW_CLOSED_EMPTY)

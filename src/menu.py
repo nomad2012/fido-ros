@@ -1,10 +1,10 @@
 #!/usr/bin/env python
-'''menu.py - menu operations for Nomad1
+'''menu.py - menu operations for FIDO
 '''
 
-import roslib; roslib.load_manifest('nomad1')
+import roslib; roslib.load_manifest('fido')
 import rospy
-from nomad1.msg import IMU, MotorStatus, MotorCommand
+from fido.msg import MotorStatus, MotorCommand
 import string
 import math
 import Tkinter as tk
@@ -84,7 +84,7 @@ def update_motor_status(data):
 
 def init_subscriptions():
     rospy.init_node('menu', anonymous=True)
-    rospy.Subscriber('imu_data', IMU, update_imu_status)
+    #rospy.Subscriber('imu_data', IMU, update_imu_status)
     rospy.Subscriber('motor_data', MotorStatus, update_motor_status)
 
 
