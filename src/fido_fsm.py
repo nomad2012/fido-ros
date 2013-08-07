@@ -8,9 +8,13 @@ class FSMClient(object):
     def run(self):
         self.fsm.do_action()
         
+    def state(self):
+        return self.fsm.current
+
 
 class FidoBrain(FSMClient):
-    def __init__(self):
+    def __init__(self, outputs):
+        self.outputs = outputs
         self.fsm = Fysom({'initial': 'SeekingBall',
                           'events': [
                               {'name': 'found_ball', 'src': 'SeekingBall', 'dst': 'TrackingBall'},
@@ -26,68 +30,72 @@ class FidoBrain(FSMClient):
                               {'name': 'at_face', 'src': 'SeekingFace', 'dst': 'DroppingBall'},
                               {'name': 'dropped_ball', 'src': 'DroppingBall', 'dst': 'SeekingBall'}],
                           'callbacks': {
-                              'onenterSeekingBall', self.enterSeekingBall,
-                              'doSeekingBall', self.doSeekingBall,
-                              'onenterTrackingBall', self.enterTrackingBall,
-                              'doTrackingBall', self.doTrackingBall,
-                              'onenterApproachingBall', self.enterApproachingBall,
-                              'doApproachingBall', self.doApproachingball,
-                              'onenterFinalApproach', self.enterFinalApproach,
-                              'onenterPickingUpBall', self.enterPickingUpBall,
-                              'onenterTurningAround', self.enterTurningAround,
-                              'onenterSeekingFace', self.enterSeekingFace,
-                              'doSeekingFace', self.doSeekingFace,
-                              'onenterApproachingFace', self.enterApproachingFace,
-                              'doApproachingFace', self.doApproachingFace,
-                              'onenterDroppingBall', self.enterDroppingBall}})
+                              'onenterSeekingBall': self._enterSeekingBall,
+                              'doSeekingBall': self._doSeekingBall,
+                              'onenterTrackingBall': self._enterTrackingBall,
+                              'doTrackingBall': self._doTrackingBall,
+                              'onenterApproachingBall': self._enterApproachingBall,
+                              'doApproachingBall': self._doApproachingBall,
+                              'onenterFinalApproach': self._enterFinalApproach,
+                              'onenterPickingUpBall': self._enterPickingUpBall,
+                              'onenterTurningAround': self._enterTurningAround,
+                              'onenterSeekingFace': self._enterSeekingFace,
+                              'doSeekingFace': self._doSeekingFace,
+                              'onenterApproachingFace': self._enterApproachingFace,
+                              'doApproachingFace': self._doApproachingFace,
+                              'onenterDroppingBall': self._enterDroppingBall}})
 
-    def enterSeekingBall(self, event):
+    #
+    # fsm action methods (private)
+    #
+    def _enterSeekingBall(self, event):
         pass
 
-    def doSeekingBall(self):
+    def _doSeekingBall(self):
         pass
 
-    def enterTrackingBall(self, event):
+    def _enterTrackingBall(self, event):
         pass
 
-    def doTrackingBall(self):
+    def _doTrackingBall(self):
         pass
 
-    def enterApproachingBall(self, event):
+    def _enterApproachingBall(self, event):
         pass
 
-    def doApproachingBall(self):
+    def _doApproachingBall(self):
         pass
 
-    def enterFinalApproach(self, event):
+    def _enterFinalApproach(self, event):
         pass
 
-    def enterPickingUpBall(self, event):
+    def _enterPickingUpBall(self, event):
         servo_if.grab_ball()
         self.fsm.have_ball()
 
-    def enterTurningAround(self, event):
+    def _enterTurningAround(self, event):
         pass
 
-    def enterSeekingFace(self, event):
+    def _enterSeekingFace(self, event):
         pass
 
-    def doSeekingFace(self):
+    def _doSeekingFace(self):
         pass
 
-    def enterApproachingFace(self, event):
+    def _enterApproachingFace(self, event):
         pass
 
-    def doApproachingFace(self):
+    def _doApproachingFace(self):
         pass
 
-    def enterDroppingBall(self, event):
+    def _enterDroppingBall(self, event):
         servo_if.drop_ball()
         self.fsm.dropped_ball()
 
 
 class FidoTail(FSMClient):
-    def __init__(self):
+    def __init__(self, outputs):
+        self.outputs = outputs
         self.fsm = Fysom({'initial': 'Idle',
                           'events': [
                               {'name': 'start_wagging', 'src': ['Idle', 'Stopping'], 'dst': 'StartingWagging'},
@@ -98,31 +106,36 @@ class FidoTail(FSMClient):
                               {'name': 'stop_wagging', 'src': 'Idle', 'dst': 'Idle'},
                               {'name': 'stopped', 'src': 'Stopping', 'dst': 'Idle'}],
                           'callbacks': {
-                              'onenterStartingWagging': self.enterStartingWagging,
-                              'onenterWaggingRight': self.enterWaggingRight,
-                              'doWaggingRight': self.doWaggingRight,
-                              'onenterWaggingLeft': self.enterWaggingLeft,
-                              'doWaggingLeft': self.doWaggingLeft,
-                              'onenterStopping': self.enterStopping}})
+                              'onenterStartingWagging': self._enterStartingWagging,
+                              'onenterWaggingRight': self._enterWaggingRight,
+                              'doWaggingRight': self._doWaggingRight,
+                              'onenterWaggingLeft': self._enterWaggingLeft,
+                              'doWaggingLeft': self._doWaggingLeft,
+                              'onenterStopping': self._enterStopping}})
 
-    def enterStartingWagging(self, event):
+    #
+    # fsm action methods (private)
+    #
+    def _enterStartingWagging(self, event):
         self.delay = event.delay
         self.count = event.count
         self.fsm.started()
         
-    def enterWaggingRight(self, event):
-        servo_if.set_servo_reliably(servo_if.TAIL, servo_if.TAIL_RIGHT)
+    def _enterWaggingRight(self, event):
+        #servo_if.set_servo_reliably(servo_if.TAIL, servo_if.TAIL_RIGHT)
+        self.outputs['tail'] = servo_if.TAIL_RIGHT
         self.timeout_time = time.time() + self.delay
 
-    def doWaggingRight(self):
+    def _doWaggingRight(self):
         if time.time() >= self.timeout_time:
             self.fsm.timeout()
 
-    def enterWaggingLeft(self, event):
-        servo_if.set_servo_reliably(servo_if.TAIL, servo_if.TAIL_LEFT)
+    def _enterWaggingLeft(self, event):
+        #servo_if.set_servo_reliably(servo_if.TAIL, servo_if.TAIL_LEFT)
+        self.outputs['tail'] = servo_if.TAIL_LEFT
         self.timeout_time = time.time() + self.delay
 
-    def doWaggingLeft(self):
+    def _doWaggingLeft(self):
         if time.time() >= self.timeout_time:
             self.count -= 1
             if self.count > 0:
@@ -130,6 +143,16 @@ class FidoTail(FSMClient):
             else:
                 self.fsm.stop_wagging()
             
-    def enterStopping(self, event):
-        servo_if.set_servo(servo_if.TAIL, servo_if.TAIL_CENTER)
+    def _enterStopping(self, event):
+        #servo_if.set_servo(servo_if.TAIL, servo_if.TAIL_CENTER)
+        self.outputs['tail'] = servo_if.TAIL_CENTER
         self.fsm.stopped()
+
+    #
+    # public interface methods
+    #
+    def start_wagging(self, delay=0.25, count=5):
+        self.fsm.start_wagging(delay=delay, count=count)
+
+    def stop_wagging(self):
+        self.fsm.stop_wagging()

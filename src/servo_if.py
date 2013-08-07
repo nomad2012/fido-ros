@@ -26,7 +26,7 @@ TAIL_LEFT = 136-50
 TAIL_CENTER = 136
 TAIL_RIGHT = 136+50
 
-port = serial.Serial("/dev/ttyUSB4", 19200, timeout=0.1)
+port = serial.Serial("/dev/ttyUSB0", 19200, timeout=0.1)
 legs_position = 0
 
 def get_legs_position():
