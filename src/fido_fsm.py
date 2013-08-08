@@ -13,7 +13,8 @@ class FSMClient(object):
 
 
 class FidoBrain(FSMClient):
-    def __init__(self, outputs):
+    def __init__(self, inputs, outputs):
+        self.inputs = inputs
         self.outputs = outputs
         self.fsm = Fysom({'initial': 'SeekingBall',
                           'events': [
@@ -27,7 +28,7 @@ class FidoBrain(FSMClient):
                               {'name': 'turned_around', 'src': 'TurningAround', 'dst': 'SeekingFace'},
                               {'name': 'found_face', 'src': 'SeekingFace', 'dst': 'ApproachingFace'},
                               {'name': 'lost_face', 'src': 'ApproachingFace', 'dst': 'SeekingFace'},
-                              {'name': 'at_face', 'src': 'SeekingFace', 'dst': 'DroppingBall'},
+                              {'name': 'at_face', 'src': ['SeekingFace', 'ApproachingFace'], 'dst': 'DroppingBall'},
                               {'name': 'dropped_ball', 'src': 'DroppingBall', 'dst': 'SeekingBall'}],
                           'callbacks': {
                               'onenterSeekingBall': self._enterSeekingBall,
@@ -37,8 +38,11 @@ class FidoBrain(FSMClient):
                               'onenterApproachingBall': self._enterApproachingBall,
                               'doApproachingBall': self._doApproachingBall,
                               'onenterFinalApproach': self._enterFinalApproach,
+                              'doFinalApproach': self._doFinalApproach,
                               'onenterPickingUpBall': self._enterPickingUpBall,
+                              'doPickingUpBall': self._doPickingUpBall,
                               'onenterTurningAround': self._enterTurningAround,
+                              'doTurningAround': self._doTurningAround,
                               'onenterSeekingFace': self._enterSeekingFace,
                               'doSeekingFace': self._doSeekingFace,
                               'onenterApproachingFace': self._enterApproachingFace,
@@ -52,49 +56,84 @@ class FidoBrain(FSMClient):
         pass
 
     def _doSeekingBall(self):
-        pass
+        self.outputs['left_wheel'] = 0
+        self.outputs['right_wheel'] = 0
+        self.outputs['neck'] = servo_if.NECK_START
+        if self.inputs['ball_area'] > 50:
+            self.fsm.found_ball()
 
     def _enterTrackingBall(self, event):
         pass
 
     def _doTrackingBall(self):
-        pass
+        #if we lose the ball, go back to seeking; if it's on the ground, approach it.
+        if self.inputs['ball_area'] <= 0:
+            self.fsm.lost_ball()
+        elif self.inputs['ball_area'] >= 50 and self.outputs['neck'] < servo_if.NECK_CENTER:
+            self.fsm.ball_on_ground()
 
     def _enterApproachingBall(self, event):
         pass
 
     def _doApproachingBall(self):
-        pass
+        if self.inputs['ball_area'] <= 0:
+            self.fsm.lost_ball()
+        elif self.inputs['ball_y'] < 240 and self.outputs['neck'] > servo_if.NECK_CENTER:
+            self.fsm.ball_above_ground()
+        elif self.inputs['ball_area'] > 8000:
+            self.fsm.near_ball()
 
     def _enterFinalApproach(self, event):
-        pass
+        self.approach_timer = time.time() + 0.8
+
+    def _doFinalApproach(self):
+        self.outputs['left_wheel'] = 100
+        self.outputs['right_wheel'] = 100
+        if time.time() >= self.approach_timer:
+            self.fsm.at_ball()
 
     def _enterPickingUpBall(self, event):
-        servo_if.grab_ball()
-        self.fsm.have_ball()
+        self.outputs['left_wheel'] = 0
+        self.outputs['right_wheel'] = 0
+        self.pickup_timer = time.time() + 2.0
+
+    def _doPickingUpBall(self):
+        if time.time() >= self.pickup_timer:
+            servo_if.grab_ball()
+            self.fsm.have_ball()
 
     def _enterTurningAround(self, event):
-        pass
+        self.turn_timer = time.time() + 2.0
 
+    def _doTurningAround(self):
+        self.outputs['left_wheel'] = -120
+        self.outputs['right_wheel'] = 120
+        if time.time() >= self.turn_timer:
+            self.fsm.turned_around()
+            
     def _enterSeekingFace(self, event):
-        pass
+        self.outputs['left_wheel'] = 0
+        self.outputs['right_wheel'] = 0
 
     def _doSeekingFace(self):
-        pass
+        self.fsm.found_face()
 
     def _enterApproachingFace(self, event):
         pass
 
     def _doApproachingFace(self):
-        pass
+        self.fsm.at_face()
 
     def _enterDroppingBall(self, event):
-        servo_if.drop_ball()
+        time.sleep(2.0)
+        servo_if.throw_ball()
+        time.sleep(2.0)
         self.fsm.dropped_ball()
 
 
 class FidoTail(FSMClient):
-    def __init__(self, outputs):
+    def __init__(self, inputs, outputs):
+        self.inputs = inputs
         self.outputs = outputs
         self.fsm = Fysom({'initial': 'Idle',
                           'events': [
@@ -156,3 +195,7 @@ class FidoTail(FSMClient):
 
     def stop_wagging(self):
         self.fsm.stop_wagging()
+
+    def is_wagging(self):
+        return self.fsm.current != 'Idle'
+        

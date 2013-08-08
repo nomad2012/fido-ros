@@ -79,7 +79,7 @@ if __name__ == '__main__':
     if len(argv) > 1:
         port = argv[1]
     else:
-        port = '/dev/ttyACM0'
+        port = '/dev/serial/by-id/usb-Arduino_LLC_Arduino_Leonardo-if00'
 
     mot = serial.Serial(port=port, baudrate=57600, timeout=1)
     try:

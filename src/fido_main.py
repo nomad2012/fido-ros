@@ -27,15 +27,6 @@ MAX_Y = 480.0
 CENTER_X = MAX_X / 2.0
 CENTER_Y = MAX_Y / 2.0
 
-HEAD_CENTER = 106
-HEAD_RIGHT = HEAD_CENTER + 40
-HEAD_LEFT = HEAD_CENTER - 40
-
-NECK_UP = 230
-NECK_DOWN = 100
-NECK_CENTER = (NECK_UP + NECK_DOWN) / 2
-NECK_START = (NECK_DOWN + NECK_CENTER) / 2
-
 
 #
 # GLOBAL VARS
@@ -120,7 +111,7 @@ def find_ball():
         inputs['last_known_ball_x'] = pos_x
         inputs['last_known_ball_y'] = pos_y
     elif inputs['last_known_ball_x'] is not None:
-        if outputs['head'] > HEAD_LEFT and outputs['head'] < HEAD_RIGHT and outputs['neck'] > NECK_DOWN and outputs['neck'] < NECK_UP:
+        if outputs['head'] > servo_if.HEAD_LEFT and outputs['head'] < servo_if.HEAD_RIGHT and outputs['neck'] > servo_if.NECK_DOWN and outputs['neck'] < servo_if.NECK_UP:
             pos_x = inputs['last_known_ball_x']
             pos_y = CENTER_Y
             
@@ -133,14 +124,14 @@ def init_pids():
     """PIDs for head, neck, and base movement"""
     global head_x_pid, neck_y_pid, base_r_pid, base_area_pid
     # head & neck PID outputs are relative to center of view, so if the ball is centered, output = 0.
-    head_x_pid = pid.PID(kP=0.020, kI=0.00075, kD=0.0, output_min=-HEAD_CENTER, output_max=HEAD_CENTER)
+    head_x_pid = pid.PID(kP=0.020, kI=0.00075, kD=0.0, output_min=-servo_if.HEAD_CENTER, output_max=servo_if.HEAD_CENTER)
     head_x_pid.set_setpoint(CENTER_X)
-    neck_y_pid = pid.PID(kP=0.020, kI=0.00075, kD=0.0, output_min=-NECK_CENTER, output_max=NECK_CENTER)
+    neck_y_pid = pid.PID(kP=0.020, kI=0.00075, kD=0.0, output_min=-servo_if.NECK_CENTER, output_max=servo_if.NECK_CENTER)
     neck_y_pid.set_setpoint(CENTER_Y)
     # base tracks the head and tries to move so that the head will be centered
     # output = rotational velocity (applied negatively to left wheel, positively to right)
     base_r_pid = pid.PID(kP=1.5, kI=0.05, kD=0.0, output_min=-250, output_max=250)
-    base_r_pid.set_setpoint(HEAD_CENTER)
+    base_r_pid.set_setpoint(servo_if.HEAD_CENTER)
 
     base_area_pid = pid.PID(kP=0.02, kI=0.002, kD=0.0, output_min=-250, output_max=250)
     base_area_pid.set_setpoint(5500)
@@ -155,24 +146,34 @@ def init_publisher():
 
 def update_pids():
     head_x_output = head_x_pid.update(inputs['ball_x'])
-    head_x = min(max(outputs['head'] + head_x_output, HEAD_LEFT), HEAD_RIGHT)
+    head_x = min(max(outputs['head'] + head_x_output, servo_if.HEAD_LEFT), servo_if.HEAD_RIGHT)
     outputs['head'] = head_x
         
     neck_y_output = neck_y_pid.update(inputs['ball_y'])
     # for screen coordinates, +y = down, but for neck coordinates, +y = up
-    neck_y = min(max(outputs['neck'] - neck_y_output, NECK_DOWN), NECK_UP)
+    neck_y = min(max(outputs['neck'] - neck_y_output, servo_if.NECK_DOWN), servo_if.NECK_UP)
     outputs['neck'] = neck_y
-        
-    base_x_output = base_r_pid.update(prev_outputs['head'])
-    base_area_output = base_area_pid.update(inputs['ball_area']) if inputs['ball_area'] > 50 else 0
-    left_motor_speed = min(max(base_x_output - base_area_output, -250), 250)
-    right_motor_speed = min(max(-base_x_output - base_area_output, -250), 250)
-    outputs['left_wheel'] = left_motor_speed
-    outputs['right_wheel'] = right_motor_speed
+
+    if brain.state() == 'ApproachingBall':
+        base_x_output = base_r_pid.update(prev_outputs['head'])
+        base_area_output = base_area_pid.update(inputs['ball_area']) if inputs['ball_area'] > 50 else 0
+        left_motor_speed = min(max(base_x_output - base_area_output, -250), 250)
+        right_motor_speed = min(max(-base_x_output - base_area_output, -250), 250)
+        outputs['left_wheel'] = left_motor_speed
+        outputs['right_wheel'] = right_motor_speed
+    else:
+        outputs['left_wheel'] = 0
+        outputs['right_wheel'] = 0
         
     jaw_pos = int((float(inputs['ball_area']) - 1000.0) / 20000.0 * (servo_if.JAW_OPEN - servo_if.JAW_CLOSED_EMPTY) + servo_if.JAW_CLOSED_EMPTY)
     jaw_pos = max(min(jaw_pos, servo_if.JAW_OPEN), servo_if.JAW_CLOSED_EMPTY)
     outputs['jaw'] = jaw_pos
+
+    if inputs['ball_area'] > 4000:
+        if not tail.is_wagging():
+            tail.start_wagging(0.25, 9999)
+    else:
+        tail.stop_wagging()
 
     
 def set_motor_speed(speed_cmd_l, speed_cmd_r):
@@ -221,7 +222,8 @@ def write_outputs():
         
     #t2 = time.time()
     #print 'output time = {}'.format(t2 - t1)
-    
+
+        
 def main():
     """track a tennis ball with FIDO's head and base"""
     global cam
@@ -234,7 +236,7 @@ def main():
     
     servo_if.init_servos()
     time.sleep(0.25)
-    servo_if.set_servo(servo_if.NECK, NECK_START)
+    servo_if.set_servo(servo_if.NECK, servo_if.NECK_START)
     outputs['legs'] = servo_if.legs_position
     outputs['head'] = servo_if.get_servo_position(servo_if.HEAD)
     outputs['neck'] = servo_if.get_servo_position(servo_if.NECK)
@@ -249,8 +251,8 @@ def main():
     prev_outputs['jaw'] = outputs['jaw']
     prev_outputs['tail'] = outputs['tail']
     
-    brain = fido_fsm.FidoBrain(outputs)
-    tail = fido_fsm.FidoTail(outputs)
+    brain = fido_fsm.FidoBrain(inputs, outputs)
+    tail = fido_fsm.FidoTail(inputs, outputs)
 
     frame_number = 0
     
