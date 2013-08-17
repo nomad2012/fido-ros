@@ -171,16 +171,16 @@ def grab_ball():
     wag_tail()
 
 def throw_ball():
-    set_servo(HEAD, HEAD_CENTER)
-    set_servo(JAW, JAW_CLOSED_FULL)
+    set_servo_reliably(HEAD, HEAD_CENTER)
+    set_servo_reliably(JAW, JAW_CLOSED_FULL)
     time.sleep(0.2)
     lower_head()
-    ramp_legs(LEGS_DOWN+10, -3, 0.02)
-    time.sleep(0.2)
+    ramp_legs(LEGS_DOWN, -3, 0.02)
+    time.sleep(0.5)
     set_legs(LEGS_UP)
-    set_servo(NECK, NECK_UP)
+    set_servo_reliably(NECK, NECK_CENTER)
     time.sleep(0.05)
-    set_servo(JAW, JAW_OPEN)
+    set_servo_reliably(JAW, JAW_OPEN)
     time.sleep(1.0)
 
 def test_servos(iterations=20):

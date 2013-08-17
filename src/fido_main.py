@@ -6,7 +6,7 @@
 import roslib
 roslib.load_manifest('fido')
 import rospy
-from fido.msg import MotorCommand
+from fido.msg import MotorCommand, MotorStatus
 import cv2
 from video import create_capture
 import numpy as np
@@ -31,6 +31,19 @@ CENTER_Y = MAX_Y / 2.0
 #
 # GLOBAL VARS
 #
+
+ir_l = 0.0
+ir_m = 0.0
+ir_r = 0.0
+encoder_l = 0.0
+encoder_r = 0.0
+speed_cmd_l = 0.0
+speed_cmd_r = 0.0
+speed_act_l = 0.0
+speed_act_r = 0.0
+out_l = 0.0
+out_r = 0.0
+
 
 # FSM clients
 cam = None
@@ -137,6 +150,10 @@ def init_pids():
     base_area_pid.set_setpoint(5500)
 
     
+def init_subscriptions():
+    rospy.Subscriber('motor_data', MotorStatus, update_motor_status)
+
+    
 def init_publisher():
     """initialize ROS publisher(s)"""
     global pub
@@ -145,6 +162,11 @@ def init_publisher():
 
 
 def update_pids():
+
+    if brain.state() not in ['SeekingBall', 'TrackingBall', 'ApproachingBall']:
+        # print "state = {}, don't update pids".format(brain.state())
+        return
+        
     head_x_output = head_x_pid.update(inputs['ball_x'])
     head_x = min(max(outputs['head'] + head_x_output, servo_if.HEAD_LEFT), servo_if.HEAD_RIGHT)
     outputs['head'] = head_x
@@ -176,6 +198,34 @@ def update_pids():
         tail.stop_wagging()
 
     
+def update_motor_status(data):
+    global ir_l
+    global ir_m
+    global ir_r
+    global encoder_l
+    global encoder_r
+    global speed_cmd_l
+    global speed_cmd_r
+    global speed_act_l
+    global speed_act_r
+    global out_l
+    global out_r
+
+    ir_l = data.ir_l
+    ir_m = data.ir_m
+    ir_r = data.ir_r
+    encoder_l = data.encoder_l
+    #rospy.loginfo(str(encoder_l))
+    encoder_r = data.encoder_r
+    speed_cmd_l = data.speed_cmd_l
+    speed_cmd_r = data.speed_cmd_r
+    speed_act_l = data.speed_act_l
+    speed_act_r = data.speed_act_r
+    out_l = data.out_l
+    out_r = data.out_r
+    #rospy.loginfo('update motor status')
+
+    
 def set_motor_speed(speed_cmd_l, speed_cmd_r):
     """send a command to the motor_if ROS node to set left and right wheel motor speeds
     """
@@ -185,6 +235,9 @@ def set_motor_speed(speed_cmd_l, speed_cmd_r):
 def read_inputs():
     """read all sensors"""
     global inputs
+    inputs['ir_l'] = ir_l
+    inputs['ir_m'] = ir_m
+    inputs['ir_r'] = ir_r
     inputs['cam_status'], inputs['cam_frame'] = cam.read()
     if inputs['cam_status']:
         find_ball()
@@ -233,6 +286,7 @@ def main():
     cam = create_capture(-1)
     init_pids()
     init_publisher()
+    init_subscriptions()
     
     servo_if.init_servos()
     time.sleep(0.25)
@@ -269,7 +323,7 @@ def main():
         write_outputs()
         end_time = time.time()
         if not frame_number % 10:
-            print '{}. {} brain: {} tail: {} x: {} y: {} area: {} head: {} neck: {} base: {} {} jaw: {} elapsed: {}'.format(frame_number, datetime.now(), brain.state(), tail.state(), inputs['ball_x'], inputs['ball_y'], inputs['ball_area'], outputs['head'], outputs['neck'], outputs['left_wheel'], outputs['right_wheel'], outputs['jaw'], end_time - start_time)
+            print '{}. {} ir: {} {} {} brain: {} tail: {} x: {} y: {} area: {} head: {} neck: {} base: {} {} jaw: {} elapsed: {}'.format(frame_number, datetime.now(), inputs['ir_l'], inputs['ir_m'], inputs['ir_r'], brain.state(), tail.state(), inputs['ball_x'], inputs['ball_y'], inputs['ball_area'], outputs['head'], outputs['neck'], outputs['left_wheel'], outputs['right_wheel'], outputs['jaw'], end_time - start_time)
         time.sleep(max(0.066666 - (end_time - start_time), 0.001))
 
 
