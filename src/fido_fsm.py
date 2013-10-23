@@ -97,12 +97,12 @@ class FidoBrain(FSMClient):
                 # centered; continue forward until it's at the right distance
                 if ir_m > 20:
                     # approach ball fast
-                    self.outputs['left_wheel'] = 60
-                    self.outputs['right_wheel'] = 60
+                    self.outputs['left_wheel'] = 50
+                    self.outputs['right_wheel'] = 50
                 elif ir_m > 11:
                     # approach ball
-                    self.outputs['left_wheel'] = 40
-                    self.outputs['right_wheel'] = 40
+                    self.outputs['left_wheel'] = 50
+                    self.outputs['right_wheel'] = 50
                 else:
                     # close enough!
                     self.outputs['left_wheel'] = 0
@@ -110,22 +110,22 @@ class FidoBrain(FSMClient):
                     self.fsm.at_ball()
             elif ir_l < ir_r:
                 # rotate left
-                self.outputs['left_wheel'] = -80
-                self.outputs['right_wheel'] = 80
+                self.outputs['left_wheel'] = -50
+                self.outputs['right_wheel'] = 50
             else:
                 # rotate right
-                self.outputs['left_wheel'] = 80
-                self.outputs['right_wheel'] = -80
+                self.outputs['left_wheel'] = 50
+                self.outputs['right_wheel'] = -50
         else:
             # no ir sensor sees ball; rotate in direction head is pointing
             if self.outputs['head'] < servo_if.HEAD_CENTER:
                 # rotate left
-                self.outputs['left_wheel'] = -80
-                self.outputs['right_wheel'] = 80
+                self.outputs['left_wheel'] = -50
+                self.outputs['right_wheel'] = 50
             else:
                 # rotate right
-                self.outputs['left_wheel'] = 80
-                self.outputs['right_wheel'] = -80
+                self.outputs['left_wheel'] = 50
+                self.outputs['right_wheel'] = -50
 
 
     def _enterPickingUpBall(self, event):

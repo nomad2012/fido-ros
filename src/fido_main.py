@@ -179,8 +179,8 @@ def update_pids():
     if brain.state() == 'ApproachingBall':
         base_x_output = base_r_pid.update(prev_outputs['head'])
         base_area_output = base_area_pid.update(inputs['ball_area']) if inputs['ball_area'] > 50 else 0
-        left_motor_speed = min(max(base_x_output - base_area_output, -250), 250)
-        right_motor_speed = min(max(-base_x_output - base_area_output, -250), 250)
+        left_motor_speed = min(max(base_x_output - base_area_output, -50), 50)
+        right_motor_speed = min(max(-base_x_output - base_area_output, -50), 50)
         outputs['left_wheel'] = left_motor_speed
         outputs['right_wheel'] = right_motor_speed
     else:
