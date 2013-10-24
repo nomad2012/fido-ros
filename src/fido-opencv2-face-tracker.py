@@ -22,8 +22,8 @@ import servo_if
 pos_x = 0
 pos_y = 0
 
-MAX_X = 640.0
-MAX_Y = 480.0
+MAX_X = 320.0
+MAX_Y = 240.0
 
 CENTER_X = MAX_X / 2.0
 CENTER_Y = MAX_Y / 2.0
@@ -35,7 +35,7 @@ HEAD_LEFT = HEAD_CENTER - 40
 NECK_UP = 230
 NECK_DOWN = 100
 NECK_CENTER = (NECK_UP + NECK_DOWN) / 2
-NECK_START = (NECK_DOWN + NECK_CENTER) / 2
+NECK_START = NECK_CENTER
 
 def detect_faces(img, cascade):
     rects = cascade.detectMultiScale(img, scaleFactor=1.3, minNeighbors=4, minSize=(30, 30), flags = cv.CV_HAAR_SCALE_IMAGE)
@@ -70,7 +70,7 @@ def init_publisher():
 
 
 def main():
-    """track a tennis ball with FIDO's head and base"""
+    """track a face with FIDO's head and base"""
     global pos_x
     global pos_y
 
@@ -85,6 +85,8 @@ def main():
     nested = cv2.CascadeClassifier(nested_fn)
     
     cam = create_capture(-1)
+    cam.set(cv.CV_CAP_PROP_FRAME_HEIGHT, MAX_Y)
+    cam.set(cv.CV_CAP_PROP_FRAME_WIDTH, MAX_X)
     #cv2.namedWindow(color_tracker_window, 1)
     #cv2.moveWindow(color_tracker_window, 0, 0)
     #cv2.namedWindow(thresh_window, 1)
@@ -94,9 +96,9 @@ def main():
 
     # PIDs for head, neck, and base movement.
     # head & neck PID outputs are relative to center of view, so if the ball is centered, output = 0.
-    head_x_pid = pid.PID(kP=0.020, kI=0.001, kD=0.0, output_min=-HEAD_CENTER, output_max=HEAD_CENTER)
+    head_x_pid = pid.PID(kP=0.020, kI=0.002, kD=0.0, output_min=-HEAD_CENTER, output_max=HEAD_CENTER)
     head_x_pid.set_setpoint(CENTER_X)
-    neck_y_pid = pid.PID(kP=0.020, kI=0.00075, kD=0.0, output_min=-NECK_CENTER, output_max=NECK_CENTER)
+    neck_y_pid = pid.PID(kP=0.020, kI=0.001, kD=0.0, output_min=-NECK_CENTER, output_max=NECK_CENTER)
     neck_y_pid.set_setpoint(CENTER_Y)
     # base tracks the head and tries to move so that the head will be centered
     # output = rotational velocity (applied negatively to left wheel, positively to right)
@@ -115,6 +117,7 @@ def main():
     head_x_output = 0
     neck_y_output = 0
     base_x_output = 0
+    base_area_output = 0
     
     last_known_x = None
     last_known_y = None
@@ -182,7 +185,7 @@ def main():
                 last_known_y = None
 
 
-        if area > -1:
+        if area > 100:
             head_x_output = head_x_pid.update(pos_x)
             head_x = min(max(head_x + head_x_output, HEAD_LEFT), HEAD_RIGHT)
             servo_if.set_servo(servo_if.HEAD, int(head_x))
@@ -193,14 +196,15 @@ def main():
         
             base_x_output = base_r_pid.update(head_x)
             #base_x_output = 0
-            base_area_output = base_area_pid.update(area) if area > 50 else 0
-            left_motor_speed = min(max(base_x_output - base_area_output, -250), 250)
-            right_motor_speed = min(max(-base_x_output - base_area_output, -250), 250)
+            #base_area_output = base_area_pid.update(area) if area > 50 else 0
+            base_area_output = 0
+            left_motor_speed = min(max(base_x_output - base_area_output, -50), 50)
+            right_motor_speed = min(max(-base_x_output - base_area_output, -50), 50)
             set_motor_speed(int(left_motor_speed), int(right_motor_speed))  # for +output, left motor goes forward, right motor goes backward
-        
-            jaw_pos = int((float(area) - 1000.0) / 20000.0 * (servo_if.JAW_OPEN - servo_if.JAW_CLOSED_EMPTY) + servo_if.JAW_CLOSED_EMPTY)
-            jaw_pos = max(min(jaw_pos, servo_if.JAW_OPEN), servo_if.JAW_CLOSED_EMPTY)
-            servo_if.set_servo(servo_if.JAW, jaw_pos)
+
+        jaw_pos = int((float(area) - 100.0) / 5000.0 * (servo_if.JAW_OPEN - servo_if.JAW_CLOSED_EMPTY) + servo_if.JAW_CLOSED_EMPTY)
+        jaw_pos = max(min(jaw_pos, servo_if.JAW_OPEN), servo_if.JAW_CLOSED_EMPTY)
+        servo_if.set_servo(servo_if.JAW, jaw_pos)
 
         end_time = time.time()
         if not frame_number % 10:
