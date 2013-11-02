@@ -183,6 +183,14 @@ def throw_ball():
     set_servo_reliably(JAW, JAW_OPEN)
     time.sleep(1.0)
 
+def pose_for_play():
+    set_servo_reliably(HEAD, HEAD_CENTER)
+    set_servo_reliably(JAW, JAW_CLOSED_FULL)
+    time.sleep(0.2)
+    set_legs(LEGS_DOWN);
+    set_servo_reliably(NECK, NECK_UP);
+    
+
 def test_servos(iterations=20):
     init_servos()
     for j in xrange(iterations):

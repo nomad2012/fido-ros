@@ -21,8 +21,8 @@ import fido_fsm
 # CONSTANTS
 #
 
-MAX_X = 640.0
-MAX_Y = 480.0
+MAX_X = 320.0
+MAX_Y = 240.0
 
 CENTER_X = MAX_X / 2.0
 CENTER_Y = MAX_Y / 2.0
@@ -43,6 +43,8 @@ speed_act_l = 0.0
 speed_act_r = 0.0
 out_l = 0.0
 out_r = 0.0
+cascade = None
+nested = None
 
 
 # FSM clients
@@ -62,11 +64,13 @@ inputs = {'cam_status': None,
           'ball_x': 0,
           'ball_y': 0,
           'ball_area': 0,
-          'last_known_ball_x': 0,
-          'last_known_ball_y': 0,
+          'last_known_ball_x': CENTER_X,
+          'last_known_ball_y': CENTER_Y,
           'face_x': 0,
           'face_y': 0,
-          'face_area': 0
+          'face_area': 0,
+          'last_known_face_x': CENTER_X,
+          'last_known_face_y': MAX_Y
 }
 
 # current output values to all controlled devices
@@ -132,14 +136,52 @@ def find_ball():
     inputs['ball_y'] = pos_y
     inputs['ball_area'] = area
 
+
+def detect_faces(img, cascade):
+    rects = cascade.detectMultiScale(img, scaleFactor=1.3, minNeighbors=4, minSize=(30, 30), flags = cv2.cv.CV_HAAR_SCALE_IMAGE)
+    if len(rects) == 0:
+        return []
+    rects[:,2:] += rects[:,:2]
+    return rects
+
+
+def find_face():
+    """locate a face within the current camera frame"""
+    gray = cv2.cvtColor(inputs['cam_frame'], cv2.COLOR_BGR2GRAY)
+    gray = cv2.equalizeHist(gray)
+    rects = detect_faces(gray, cascade)
+
+    area = 0
+    pos_x = CENTER_X
+    pos_y = CENTER_Y
+    
+    for x1, y1, x2, y2 in rects:
+        a = (x2 - x1) * (y2 - y1)
+        if a > area:
+            area = a
+            pos_x = (x1 + x2) / 2
+            pos_y = (y1 + y2) / 2
+ 
+    if area > 100: 			
+        inputs['last_known_face_x'] = pos_x
+        inputs['last_known_face_y'] = pos_y
+    elif inputs['last_known_face_x'] is not None:
+        if outputs['head'] > servo_if.HEAD_LEFT and outputs['head'] < servo_if.HEAD_RIGHT and outputs['neck'] > servo_if.NECK_DOWN and outputs['neck'] < servo_if.NECK_UP:
+            pos_x = inputs['last_known_face_x']
+            pos_y = CENTER_Y
+
+    inputs['face_x'] = pos_x
+    inputs['face_y'] = pos_y
+    inputs['face_area'] = area
+
     
 def init_pids():
     """PIDs for head, neck, and base movement"""
     global head_x_pid, neck_y_pid, base_r_pid, base_area_pid
     # head & neck PID outputs are relative to center of view, so if the ball is centered, output = 0.
-    head_x_pid = pid.PID(kP=0.020, kI=0.00075, kD=0.0, output_min=-servo_if.HEAD_CENTER, output_max=servo_if.HEAD_CENTER)
+    head_x_pid = pid.PID(kP=0.020, kI=0.002, kD=0.0, output_min=-servo_if.HEAD_CENTER, output_max=servo_if.HEAD_CENTER)
     head_x_pid.set_setpoint(CENTER_X)
-    neck_y_pid = pid.PID(kP=0.020, kI=0.00075, kD=0.0, output_min=-servo_if.NECK_CENTER, output_max=servo_if.NECK_CENTER)
+    neck_y_pid = pid.PID(kP=0.020, kI=0.001, kD=0.0, output_min=-servo_if.NECK_CENTER, output_max=servo_if.NECK_CENTER)
     neck_y_pid.set_setpoint(CENTER_Y)
     # base tracks the head and tries to move so that the head will be centered
     # output = rotational velocity (applied negatively to left wheel, positively to right)
@@ -147,7 +189,7 @@ def init_pids():
     base_r_pid.set_setpoint(servo_if.HEAD_CENTER)
 
     base_area_pid = pid.PID(kP=0.02, kI=0.002, kD=0.0, output_min=-250, output_max=250)
-    base_area_pid.set_setpoint(5500)
+    base_area_pid.set_setpoint(6000)
 
     
 def init_subscriptions():
@@ -163,24 +205,33 @@ def init_publisher():
 
 def update_pids():
 
-    if brain.state() not in ['SeekingBall', 'TrackingBall', 'ApproachingBall']:
-        # print "state = {}, don't update pids".format(brain.state())
+    if brain.state() in ['TrackingBall', 'ApproachingBall']:
+        pos_x = inputs['ball_x']
+        pos_y = inputs['ball_y']
+        area = inputs['ball_area']
+    elif brain.state() in ['ApproachingFace']:
+        pos_x = inputs['face_x']
+        pos_y = inputs['face_y']
+        area = inputs['face_area']
+    else:
+        # not in a state where we want to update PIDs...
+        tail.stop_wagging()
         return
         
-    head_x_output = head_x_pid.update(inputs['ball_x'])
+    head_x_output = head_x_pid.update(pos_x)
     head_x = min(max(outputs['head'] + head_x_output, servo_if.HEAD_LEFT), servo_if.HEAD_RIGHT)
     outputs['head'] = head_x
         
-    neck_y_output = neck_y_pid.update(inputs['ball_y'])
+    neck_y_output = neck_y_pid.update(pos_y)
     # for screen coordinates, +y = down, but for neck coordinates, +y = up
-    neck_y = min(max(outputs['neck'] - neck_y_output, servo_if.NECK_DOWN), servo_if.NECK_UP)
+    neck_y = min(max(outputs['neck'] - neck_y_output, (servo_if.NECK_CENTER if brain.should_find_face() else servo_if.NECK_DOWN)), servo_if.NECK_UP)
     outputs['neck'] = neck_y
 
-    if brain.state() == 'ApproachingBall':
+    if brain.state() in ['ApproachingBall', 'ApproachingFace']:
         base_x_output = base_r_pid.update(prev_outputs['head'])
-        base_area_output = base_area_pid.update(inputs['ball_area']) if inputs['ball_area'] > 50 else 0
-        left_motor_speed = min(max(base_x_output - base_area_output, -50), 50)
-        right_motor_speed = min(max(-base_x_output - base_area_output, -50), 50)
+        base_area_output = base_area_pid.update(area) if area > 50 else 0
+        left_motor_speed = min(max(base_x_output - base_area_output, -100), 100)
+        right_motor_speed = min(max(-base_x_output - base_area_output, -100), 100)
         outputs['left_wheel'] = left_motor_speed
         outputs['right_wheel'] = right_motor_speed
     else:
@@ -191,7 +242,7 @@ def update_pids():
     jaw_pos = max(min(jaw_pos, servo_if.JAW_OPEN), servo_if.JAW_CLOSED_EMPTY)
     outputs['jaw'] = jaw_pos
 
-    if inputs['ball_area'] > 4000:
+    if area > 1000:
         if not tail.is_wagging():
             tail.start_wagging(0.25, 9999)
     else:
@@ -240,12 +291,15 @@ def read_inputs():
     inputs['ir_r'] = ir_r
     inputs['cam_status'], inputs['cam_frame'] = cam.read()
     if inputs['cam_status']:
-        find_ball()
+        if brain.should_find_ball():
+            find_ball()
+        elif brain.should_find_face():
+            find_face()
 
     
 def write_outputs():
     """write current output values to motors & servos"""
-    global outputs
+    global outputs, prev_outputs
     #t1 = time.time()
 
     if outputs['left_wheel'] != prev_outputs['left_wheel'] or outputs['right_wheel'] != prev_outputs['right_wheel']:
@@ -281,9 +335,19 @@ def main():
     """track a tennis ball with FIDO's head and base"""
     global cam
     global brain, tail
-    global inputs, outputs
+    global inputs, outputs, prev_outputs
+    global cascade, nested
+    
+    cascade_fn = "../data/haarcascades/haarcascade_frontalface_alt.xml"
+    nested_fn  = "../data/haarcascades/haarcascade_eye.xml"
+
+    cascade = cv2.CascadeClassifier(cascade_fn)
+    nested = cv2.CascadeClassifier(nested_fn)
     
     cam = create_capture(-1)
+    cam.set(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT, MAX_Y)
+    cam.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, MAX_X)
+
     init_pids()
     init_publisher()
     init_subscriptions()
@@ -323,7 +387,7 @@ def main():
         write_outputs()
         end_time = time.time()
         if not frame_number % 10:
-            print '{}. {} ir: {} {} {} brain: {} tail: {} x: {} y: {} area: {} head: {} neck: {} base: {} {} jaw: {} elapsed: {}'.format(frame_number, datetime.now(), inputs['ir_l'], inputs['ir_m'], inputs['ir_r'], brain.state(), tail.state(), inputs['ball_x'], inputs['ball_y'], inputs['ball_area'], outputs['head'], outputs['neck'], outputs['left_wheel'], outputs['right_wheel'], outputs['jaw'], end_time - start_time)
+            print '{}. {} ir: {} {} {} brain: {} tail: {} x: {} y: {} area: {} {} head: {} neck: {} base: {} {} jaw: {} elapsed: {}'.format(frame_number, datetime.now(), inputs['ir_l'], inputs['ir_m'], inputs['ir_r'], brain.state(), tail.state(), inputs['ball_x'], inputs['ball_y'], inputs['ball_area'], inputs['face_area'], outputs['head'], outputs['neck'], outputs['left_wheel'], outputs['right_wheel'], outputs['jaw'], end_time - start_time)
         time.sleep(max(0.066666 - (end_time - start_time), 0.001))
 
 
