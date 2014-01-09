@@ -22,6 +22,7 @@ speed_act_l = 0.0
 speed_act_r = 0.0
 out_l = 0.0
 out_r = 0.0
+batt_v = 0.0
 
 def read_motor_status():
     global ir_l
@@ -37,12 +38,13 @@ def read_motor_status():
     global speed_act_r
     global out_l
     global out_r
+    global batt_v
 
     mot_line = mot.readline()
     #rospy.loginfo(mot_line)
     words = string.split(mot_line,",")
     
-    if len(words) >= 14:
+    if len(words) >= 15:
         try:
             ir_l = float(words[1])
             ir_m = float(words[2])
@@ -57,6 +59,7 @@ def read_motor_status():
             speed_act_r = float(words[11])
             out_l = float(words[12])
             out_r = float(words[13])
+            batt_v = float(words[14])
         except:
             rospy.loginfo('bad line')
     else:
@@ -74,7 +77,7 @@ def talker():
                                 encoder_l=encoder_l, encoder_r=encoder_r,
                                 speed_cmd_l=speed_cmd_l, speed_cmd_r=speed_cmd_r,
                                 speed_act_l=speed_act_l, speed_act_r=speed_act_r,
-                                out_l=out_l, out_r=out_r))
+                                out_l=out_l, out_r=out_r, batt_v=batt_v))
         #rospy.sleep(0.2)
 
 def do_motor_command(data):
@@ -89,7 +92,8 @@ if __name__ == '__main__':
     if len(argv) > 1:
         port = argv[1]
     else:
-        port = '/dev/serial/by-id/usb-Arduino_LLC_Arduino_Leonardo-if00'
+        port = '/dev/serial/by-id/usb-Arduino__www.arduino.cc__0042_649383339323511132E1-if00'
+        # 'usb-Arduino_LLC_Arduino_Leonardo-if00'
 
     mot = serial.Serial(port=port, baudrate=57600, timeout=1)
     try:

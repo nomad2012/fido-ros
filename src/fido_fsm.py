@@ -25,11 +25,11 @@ class FidoBrain(FSMClient):
                               {'name': 'near_ball', 'src': 'ApproachingBall', 'dst': 'FinalApproach'},
                               {'name': 'at_ball', 'src': 'FinalApproach', 'dst': 'PickingUpBall'},
                               {'name': 'have_ball', 'src': 'PickingUpBall', 'dst': 'TurningAround'},
-                              {'name': 'turned_around', 'src': 'TurningAround', 'dst': 'SeekingFace'},
+                              {'name': 'turned_around', 'src': 'TurningAround', 'dst': 'DroppingBall'},
                               {'name': 'found_face', 'src': 'SeekingFace', 'dst': 'ApproachingFace'},
                               {'name': 'lost_face', 'src': 'ApproachingFace', 'dst': 'SeekingFace'},
                               {'name': 'at_face', 'src': ['SeekingFace', 'ApproachingFace'], 'dst': 'DroppingBall'},
-                              {'name': 'dropped_ball', 'src': 'DroppingBall', 'dst': 'PosingForPlay'},
+                              {'name': 'dropped_ball', 'src': 'DroppingBall', 'dst': 'SeekingBall'},
                               {'name': 'posed_for_play', 'src': 'PosingForPlay', 'dst': 'SeekingBall'}],
                           'callbacks': {
                               'onenterSeekingBall': self._enterSeekingBall,
@@ -66,8 +66,8 @@ class FidoBrain(FSMClient):
         pass
 
     def _doSeekingBall(self):
-        self.outputs['left_wheel'] = 0
-        self.outputs['right_wheel'] = 0
+        self.outputs['left_wheel'] = -100
+        self.outputs['right_wheel'] = 100
         self.outputs['legs'] = servo_if.LEGS_UP
         self.outputs['neck'] = servo_if.NECK_START
         if self.inputs['ball_area'] > 50:
@@ -78,20 +78,22 @@ class FidoBrain(FSMClient):
 
     def _doTrackingBall(self):
         #if we lose the ball, go back to seeking; if it's on the ground, approach it.
-        if self.inputs['ball_area'] <= 0:
+        if self.inputs['ball_area'] <= 40:
             self.fsm.lost_ball()
-        elif self.inputs['ball_area'] >= 50 and self.outputs['neck'] < servo_if.NECK_CENTER:
+        elif self.inputs['ball_area'] >= 50 and self.inputs['ball_y'] >= 120 and self.outputs['neck'] < servo_if.NECK_CENTER:
             self.fsm.ball_on_ground()
 
     def _enterApproachingBall(self, event):
         self.outputs['legs'] = servo_if.LEGS_UP
 
     def _doApproachingBall(self):
-        if self.inputs['ball_area'] <= 0:
+        if self.inputs['ball_area'] <= 40:
             self.fsm.lost_ball()
-        elif self.inputs['ball_y'] < 240 and self.outputs['neck'] > servo_if.NECK_CENTER:
+        elif self.inputs['ball_y'] < 120 and self.outputs['neck'] > servo_if.NECK_CENTER:
             self.fsm.ball_above_ground()
-        elif self.inputs['ball_area'] > 1000:
+        elif self.inputs['ball_area'] > 2000:
+            #self.outputs['left_wheel'] = 0
+            #self.outputs['right_wheel'] = 0
             self.fsm.near_ball()
 
     def _enterFinalApproach(self, event):
@@ -103,10 +105,11 @@ class FidoBrain(FSMClient):
         ir_l = self.inputs['ir_l']
         ir_m = self.inputs['ir_m']
         ir_r = self.inputs['ir_r']
-        fast_approach_speed = 80
-        slow_approach_speed = 40
-        rotate_speed = 50
-        if (ir_l < 50 and ir_m < 50) or (ir_m < 50 and ir_r < 50):
+        fast_approach_speed = 160
+        slow_approach_speed = 80
+        rotate_speed = 80
+        ir_detect_dist = 60
+        if (ir_l < 60 and ir_m < 60) or (ir_m < 60 and ir_r < 60):
             # at least one IR sensor sees the ball; center it using the 3 IR sensors
             self.last_ir_l = ir_l
             self.last_ir_m = ir_m
@@ -117,10 +120,14 @@ class FidoBrain(FSMClient):
                     # approach ball fast
                     self.outputs['left_wheel'] = fast_approach_speed
                     self.outputs['right_wheel'] = fast_approach_speed
-                elif ir_m > 11:
+                elif ir_m > 10:
                     # approach ball
                     self.outputs['left_wheel'] = slow_approach_speed
                     self.outputs['right_wheel'] = slow_approach_speed
+                elif ir_m < 9:
+                    # too close, back up!
+                    self.outputs['left_wheel'] = -slow_approach_speed
+                    self.outputs['right_wheel'] = -slow_approach_speed
                 else:
                     # close enough!
                     self.outputs['left_wheel'] = 0
@@ -160,7 +167,7 @@ class FidoBrain(FSMClient):
         self.turn_timer = time.time() + 1.0
 
     def _doTurningAround(self):
-        turn_speed = 70
+        turn_speed = 250
         self.outputs['left_wheel'] = -turn_speed
         self.outputs['right_wheel'] = turn_speed
         if time.time() >= self.turn_timer:
@@ -168,10 +175,10 @@ class FidoBrain(FSMClient):
             
     def _enterSeekingFace(self, event):
         self.outputs['head'] = servo_if.HEAD_CENTER
-        self.outputs['neck'] = servo_if.NECK_UP - 20
-        servo_if.ramp_servo(servo_if.NECK, servo_if.NECK_UP - 20, 3)
-        self.outputs['left_wheel'] = -60
-        self.outputs['right_wheel'] = 60
+        self.outputs['neck'] = servo_if.NECK_UP - 40
+        servo_if.ramp_servo(servo_if.NECK, servo_if.NECK_UP - 40, 3)
+        self.outputs['left_wheel'] = -100
+        self.outputs['right_wheel'] = 100
 
     def _doSeekingFace(self):
         #self.outputs['head'] = servo_if.HEAD_CENTER
@@ -189,7 +196,7 @@ class FidoBrain(FSMClient):
             #self.fsm.lost_face()
             self.outputs['left_wheel'] = 0
             self.outputs['right_wheel'] = 0
-        elif self.inputs['face_area'] > 3000:
+        elif self.inputs['face_area'] > 6000:
             self.fsm.at_face()
 
     def _enterDroppingBall(self, event):
