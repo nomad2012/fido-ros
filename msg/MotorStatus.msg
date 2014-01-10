@@ -12,3 +12,4 @@ float64 speed_act_l
 float64 speed_act_r
 float64 out_l
 float64 out_r
+float64 batt_v
