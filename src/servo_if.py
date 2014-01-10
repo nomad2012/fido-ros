@@ -12,7 +12,7 @@ JAW = 5
 TAIL = 6
 
 # Servo positions
-LEGS_DOWN = -15 # -15  # relative to leg center - use only with set_legs()
+LEGS_DOWN = -20 # -15  # relative to leg center - use only with set_legs()
 LEGS_UP = 65     # relative to leg center - use only with set_legs()
 
 HEAD_CENTER = 106
@@ -25,7 +25,7 @@ NECK_CENTER = (NECK_UP + NECK_DOWN) / 2
 NECK_START = (NECK_DOWN + NECK_CENTER) / 2
 
 JAW_OPEN = 160
-JAW_CLOSED_FULL = 85
+JAW_CLOSED_FULL = 83
 JAW_CLOSED_EMPTY = 65
 TAIL_LEFT = 136-50
 TAIL_CENTER = 136
@@ -171,17 +171,25 @@ def grab_ball():
     wag_tail()
 
 def throw_ball():
-    set_servo(HEAD, HEAD_CENTER)
-    set_servo(JAW, JAW_CLOSED_FULL)
+    set_servo_reliably(HEAD, HEAD_CENTER)
+    set_servo_reliably(JAW, JAW_CLOSED_FULL)
     time.sleep(0.2)
     lower_head()
-    ramp_legs(LEGS_DOWN+10, -3, 0.02)
-    time.sleep(0.2)
+    ramp_legs(LEGS_DOWN, -3, 0.02)
+    time.sleep(0.5)
     set_legs(LEGS_UP)
-    set_servo(NECK, NECK_UP)
+    set_servo_reliably(NECK, NECK_CENTER)
     time.sleep(0.05)
-    set_servo(JAW, JAW_OPEN)
+    set_servo_reliably(JAW, JAW_OPEN)
     time.sleep(1.0)
+
+def pose_for_play():
+    set_servo_reliably(HEAD, HEAD_CENTER)
+    set_servo_reliably(JAW, JAW_CLOSED_FULL)
+    time.sleep(0.2)
+    set_legs(LEGS_DOWN);
+    set_servo_reliably(NECK, NECK_UP);
+    
 
 def test_servos(iterations=20):
     init_servos()

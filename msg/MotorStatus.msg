@@ -1,4 +1,7 @@
 Header header
+float64 ir_l
+float64 ir_m
+float64 ir_r
 float64 sonar_l
 float64 sonar_r
 float64 encoder_l
