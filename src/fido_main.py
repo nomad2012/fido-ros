@@ -16,6 +16,9 @@ import pid
 import servo_if
 import fido_fsm
 import math
+import sys
+import getopt
+import signal
 
 
 #
@@ -25,13 +28,30 @@ import math
 MAX_X = 640.0
 MAX_Y = 480.0
 
+SCREEN_AREA = MAX_X * MAX_Y
+
 CENTER_X = MAX_X / 2.0
 CENTER_Y = MAX_Y / 2.0
+
+AREA_MOVING_AVG_POINTS = 10
+
+JAW_CLOSE_AREA = SCREEN_AREA / 640
+JAW_OPEN_AREA = SCREEN_AREA / 64
+
+TAIL_START_WAG_AREA = SCREEN_AREA / 512
+TAIL_STOP_WAG_AREA = SCREEN_AREA / 640
+
+BALL_MIN_HSV = (30,90,120)
+BALL_MAX_HSV = (85,180,230)
+
 
 
 #
 # GLOBAL VARS
 #
+
+debug = False
+quit_request = False
 
 ir_l = 0.0
 ir_m = 0.0
@@ -67,6 +87,7 @@ inputs = {'cam_status': None,
           'ball_x': 0,
           'ball_y': 0,
           'ball_area': 0,
+          'avg_ball_area': 0,
           'last_known_ball_x': CENTER_X,
           'last_known_ball_y': CENTER_Y,
           'face_x': 0,
@@ -111,7 +132,7 @@ def get_ball_image(bgr_image):
     blurred_image = cv2.GaussianBlur(bgr_image, (9, 9), 0)
     hsv_image = cv2.cvtColor(blurred_image, cv2.COLOR_BGR2HSV)
     inputs['hsv_image'] = hsv_image
-    thresholded_image = cv2.inRange(hsv_image, (33,60,50), (45, 140, 230))
+    thresholded_image = cv2.inRange(hsv_image, BALL_MIN_HSV, BALL_MAX_HSV)
     return thresholded_image
 
 
@@ -133,10 +154,11 @@ def find_ball():
                 area = a
                 moment10 = moments['m10']
                 moment01 = moments['m01']
-                #pos_x = int(moment10 / area)
-                #pos_y = int(moment01 / area)
-                #size = math.sqrt(area) / 2.0
-                #cv2.rectangle(inputs['cam_frame'], (int(pos_x - size), int(pos_y - size)), (int(pos_x + size), int(pos_y + size)), (255, 0, 0), 2)
+                pos_x = int(moment10 / area)
+                pos_y = int(moment01 / area)
+                size = math.sqrt(area) / 2.0
+                if debug:
+                    cv2.rectangle(inputs['cam_frame'], (int(pos_x - size), int(pos_y - size)), (int(pos_x + size), int(pos_y + size)), (255, 0, 0), 2)
                 
     #make sure we have a big enough blob
     if area > 100: 			
@@ -153,6 +175,7 @@ def find_ball():
     inputs['ball_x'] = pos_x
     inputs['ball_y'] = pos_y
     inputs['ball_area'] = area
+    inputs['avg_ball_area'] = (inputs['avg_ball_area'] * (AREA_MOVING_AVG_POINTS - 1) + area) / AREA_MOVING_AVG_POINTS
        
 
 
@@ -180,6 +203,9 @@ def find_face():
             area = a
             pos_x = (x1 + x2) / 2
             pos_y = (y1 + y2) / 2
+            size = math.sqrt(area) / 2.0
+            if debug:
+                cv2.rectangle(inputs['cam_frame'], (int(pos_x - size), int(pos_y - size)), (int(pos_x + size), int(pos_y + size)), (255, 255, 0), 2)
  
     if area > 100: 			
         inputs['last_known_face_x'] = pos_x
@@ -204,11 +230,11 @@ def init_pids():
     neck_y_pid.set_setpoint(CENTER_Y)
     # base tracks the head and tries to move so that the head will be centered
     # output = rotational velocity (applied negatively to left wheel, positively to right)
-    base_r_pid = pid.PID(kP=2.0, kI=0.1, kD=0.0, output_min=-1000, output_max=1000)
+    base_r_pid = pid.PID(kP=1.0, kI=0.05, kD=0.0, output_min=-1000, output_max=1000)
     base_r_pid.set_setpoint(servo_if.HEAD_CENTER)
 
-    base_area_pid = pid.PID(kP=0.02, kI=0.002, kD=0.0, output_min=-1000, output_max=1000)
-    base_area_pid.set_setpoint(6000)
+    base_area_pid = pid.PID(kP=0.01, kI=0.0005, kD=0.0, output_min=-1000, output_max=1000)
+    base_area_pid.set_setpoint(18000)
 
     
 def init_subscriptions():
@@ -220,6 +246,22 @@ def init_publisher():
     global pub
     rospy.init_node('fido', anonymous=True)
     pub = rospy.Publisher('motor_command', MotorCommand)
+
+    
+def handle_SIGTERM(arg1, arg2):
+    global quit_request
+    print("caught SIGTERM, exiting")
+    quit_request = True
+    
+def handle_SIGINT(arg1, arg2):
+    global quit_request
+    print("caught SIGINT, exiting")
+    quit_request = True
+
+    
+def init_sighandler():
+    signal.signal(signal.SIGTERM, handle_SIGTERM)
+    signal.signal(signal.SIGINT, handle_SIGINT)
 
 
 def update_pids():
@@ -247,7 +289,11 @@ def update_pids():
     outputs['neck'] = neck_y
 
     if brain.state() in ['ApproachingBall', 'ApproachingFace']:
-        base_x_output = base_r_pid.update(prev_outputs['head'])
+        if abs(prev_outputs['head'] - servo_if.HEAD_CENTER) < 5:
+            base_x_output = 0
+        else:
+            base_x_output = base_r_pid.update(prev_outputs['head'])
+            
         base_area_output = base_area_pid.update(area) if area > 50 else 0
         left_motor_speed = min(max(base_x_output - base_area_output, -1000), 1000)
         right_motor_speed = min(max(-base_x_output - base_area_output, -1000), 1000)
@@ -257,15 +303,16 @@ def update_pids():
         outputs['left_wheel'] = 0
         outputs['right_wheel'] = 0
         
-    jaw_pos = int((float(inputs['ball_area']) - 1000.0) / 20000.0 * (servo_if.JAW_OPEN - servo_if.JAW_CLOSED_EMPTY) + servo_if.JAW_CLOSED_EMPTY)
+    jaw_pos = int((float(inputs['ball_area']) - JAW_CLOSE_AREA) / JAW_OPEN_AREA * (servo_if.JAW_OPEN - servo_if.JAW_CLOSED_EMPTY) + servo_if.JAW_CLOSED_EMPTY)
     jaw_pos = max(min(jaw_pos, servo_if.JAW_OPEN), servo_if.JAW_CLOSED_EMPTY)
     outputs['jaw'] = jaw_pos
 
-    if area > 1000:
+    if area > TAIL_START_WAG_AREA:
         if not tail.is_wagging():
             tail.start_wagging(0.25, 9999)
-    else:
-        tail.stop_wagging()
+    elif area < TAIL_STOP_WAG_AREA:
+        if tail.is_wagging():
+            tail.stop_wagging()
 
     
 def update_motor_status(data):
@@ -314,8 +361,13 @@ def read_inputs():
     if inputs['cam_status']:
         if brain.should_find_ball():
             find_ball()
-        elif brain.should_find_face():
+        else:
+            inputs['ball_area'] = 0
+            inputs['avg_ball_area'] = 0
+        if brain.should_find_face():
             find_face()
+        else:
+            inputs['face_area'] = 0
 
     
 def write_outputs():
@@ -358,22 +410,46 @@ def main():
     global brain, tail
     global inputs, outputs, prev_outputs
     global cascade, nested
+    global debug, quit_request
+
+    try:
+        opts, args = getopt.gnu_getopt(sys.argv, "hd", ["help", "debug"])
+    except getopt.GetoptError as err:
+        print err
+        print 'fido_main.py [--help] [--debug]'
+        sys.exit(2)
+
+    print "opts = ", opts
+    print "args = ", args
+        
+    for opt, arg in opts:
+        print "opt = ", opt
+        if opt in ('-h', '--help'):
+            print 'fido_main.py [--help] [--debug]'
+            sys.exit()
+        elif opt in ('-d', '--debug'):
+            debug = True
+
+    print "debug = {}".format(debug)
     
     cascade_fn = "../data/haarcascades/haarcascade_frontalface_alt.xml"
-    nested_fn  = "../data/haarcascades/haarcascade_eye.xml"
+    #nested_fn  = "../data/haarcascades/haarcascade_eye.xml"
 
     cascade = cv2.CascadeClassifier(cascade_fn)
-    nested = cv2.CascadeClassifier(nested_fn)
+    #nested = cv2.CascadeClassifier(nested_fn)
     
     cam = create_capture(-1)
     cam.set(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT, MAX_Y)
     cam.set(cv2.cv.CV_CAP_PROP_FRAME_WIDTH, MAX_X)
 
-    #cv2.namedWindow("output", 1)
+    if debug:
+        cv2.namedWindow("output", 1)
+        cv2.moveWindow("output", 0, 540)
     
     init_pids()
     init_publisher()
     init_subscriptions()
+    init_sighandler()
     
     servo_if.init_servos()
     time.sleep(0.25)
@@ -397,9 +473,10 @@ def main():
 
     frame_number = 0
     
-    #cv2.cv.SetMouseCallback("output", on_mouse, 0)
+    if debug:
+        cv2.cv.SetMouseCallback("output", on_mouse, 0)
 
-    while True:
+    while not quit_request:
         start_time = time.time()
         frame_number += 1
         read_inputs()
@@ -407,17 +484,21 @@ def main():
             print "camera read failure"
             break
         update_pids()
-        brain.run()
+        brain.run() 
         tail.run()
         write_outputs()
+        if debug:
+            s = inputs['hsv_image'][y_co, x_co]
+            cv2.putText(inputs['cam_frame'], str(s[0])+","+str(s[1])+","+str(s[2]), (x_co,y_co), cv2.FONT_HERSHEY_SIMPLEX, 1, 255)
+            cv2.imshow("output", inputs['cam_frame'])
         end_time = time.time()
-        if not frame_number % 10:
-            print '{}. {} v: {} ir: {} {} {} brain: {} tail: {} x: {} y: {} area: {} {} head: {} neck: {} base: {} {} jaw: {} elapsed: {}'.format(frame_number, datetime.now(), batt_v, inputs['ir_l'], inputs['ir_m'], inputs['ir_r'], brain.state(), tail.state(), inputs['ball_x'], inputs['ball_y'], inputs['ball_area'], inputs['face_area'], outputs['head'], outputs['neck'], outputs['left_wheel'], outputs['right_wheel'], outputs['jaw'], end_time - start_time)
-        s = inputs['hsv_image'][y_co, x_co]
-        #cv2.putText(inputs['cam_frame'], str(s[0])+","+str(s[1])+","+str(s[2]), (x_co,y_co), cv2.FONT_HERSHEY_SIMPLEX, 1, 255)
-        #cv2.imshow("output", inputs['cam_frame'])
-        #cv2.waitKey(1)
-        time.sleep(max(0.066666 - (end_time - start_time), 0.001))
+        if True: #not frame_number % 10:
+            print '{}. {} v: {} ir: {} {} {} x: {} y: {} area: {} {} brain: {} tail: {} head: {} neck: {} base: {} {} jaw: {} elapsed: {}'.format(frame_number, datetime.now(), batt_v, inputs['ir_l'], inputs['ir_m'], inputs['ir_r'], inputs['ball_x'], inputs['ball_y'], inputs['avg_ball_area'], inputs['face_area'], brain.state(), tail.state(), outputs['head'], outputs['neck'], outputs['left_wheel'], outputs['right_wheel'], outputs['jaw'], end_time - start_time)
+        k = cv2.waitKey(10)
+        if k > 0:
+            print "key pressed, exiting"
+            exit(1)
+        time.sleep(max(0.05 - (time.time() - start_time), 0.001))
 
 
 if __name__ == "__main__":

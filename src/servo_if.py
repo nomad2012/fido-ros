@@ -5,15 +5,15 @@ import time
 
 # Servo numbers
 LEFT_LEG = 1    # left and right legs must move synchronized, in opposite directions!
-RIGHT_LEG = 2
+RIGHT_LEG = 7
 NECK = 3
 HEAD = 4
 JAW = 5
 TAIL = 6
 
 # Servo positions
-LEGS_DOWN = -20 # -15  # relative to leg center - use only with set_legs()
-LEGS_UP = 65     # relative to leg center - use only with set_legs()
+LEGS_DOWN = -45  # relative to leg center - use only with set_legs()
+LEGS_UP = 40     # relative to leg center - use only with set_legs()
 
 HEAD_CENTER = 106
 HEAD_RIGHT = HEAD_CENTER + 40
@@ -66,8 +66,8 @@ def set_all_servos(pos1=0,pos2=0,pos3=0,pos4=0,pos5=0,pos6=0,pos7=0,pos8=0):
 def set_legs(position=0):
     global legs_position
     for i in xrange(3):
-        set_servo(LEFT_LEG, 134+position)
-        set_servo(RIGHT_LEG, 130-position)
+        set_servo(LEFT_LEG, 130+position)
+        set_servo(RIGHT_LEG, 128-position)
     legs_position = position
 
 def ramp_legs(position=0, step=1, delay=0.02):
